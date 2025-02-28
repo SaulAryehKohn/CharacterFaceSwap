@@ -201,6 +201,51 @@ class CropFace:
         w = h = min(max_side, img_width - x, img_height - y)  # Ensure the bounding box is within the image boundaries
         return int(x), int(y), int(w), int(h)
 
+class CropFaceBbox:
+    @classmethod
+    def INPUT_TYPES(cls):
+       return {
+            "required": {
+                "model": ("RETINAFACE", ),
+                "image": ("IMAGE", ),
+                "confidence": ("FLOAT", {"default": 0.8, "min": 0, "max": 1}),
+                "margin": ("INT", {"default": 32}),
+                "index": ("INT", {"default": 0}),
+            }
+        }
+    RETURN_TYPES = ("INT", "INT", "INT", "INT") 
+    RETURN_NAMES = ("x", "y", "w", "h")
+    FUNCTION = "bbox"
+    CATEGORY = "CFaceSwap"
+
+    def bbox(self, model: RetinaFace, image: torch.Tensor, confidence: float, margin: int, index: int):
+        with torch.no_grad():
+            # model receives bgr uint8 format
+            # bboxes: list of [x0, y0, x1, y1, confidence_score, five points (x, y)]
+            bboxes = model.detect_faces(tensor2cv(image), confidence)
+        if (len(bboxes)==0):
+            print("no face detected")
+            return np.zeros((4,)), 0, image
+        
+        bboxes = [self.add_margin_xywh((int(min(x0, x1)), int(min(y0,y1)), int(abs(x1-x0)), int(abs(y1-y0))), margin, img_width=image.shape[2], img_height=image.shape[1]) for (x0, y0, x1, y1, *_) in bboxes]
+        bbox = bboxes[index][:4]
+        return tuple(bbox)
+
+    def add_margin_xywh(self, bbox: BBox, margin: int, img_width: int, img_height: int):
+        x, y, w, h = map(lambda x: int(x), bbox)  # x, y are the coordinates of the top-left corner of the bounding box
+        
+        # Calculate margin
+        margin_w = margin
+        margin_h = margin
+        
+        # Add margin to the bounding box, ensuring it doesn't go out of the image boundaries
+        x = max(0, x - margin_w)
+        y = max(0, y - margin_h)
+        w = min(img_width - x, w + 2 * margin_w)
+        h= min(img_height - y, h + 2 * margin_h)
+        return x, y, w, h
+
+
 class UncropFace:
     @classmethod
     def INPUT_TYPES(cls):
